@@ -184,13 +184,41 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 	}
 	var deletedRecords []libdns.Record
 
+	// Records without an ID (e.g. unwrapped libdns.RR values passed by
+	// certmagic's dns-01 cleanup) are looked up by name/type/value first,
+	// since the DNSPod API can only delete records by ID.
+	var existing []dnspod.Record
+	listExisting := func() ([]dnspod.Record, error) {
+		if existing == nil {
+			recs, _, err := client.Records.List(domainID, "")
+			if err != nil {
+				return nil, err
+			}
+			existing = recs
+		}
+		return existing, nil
+	}
+
 	for _, libdnsRecord := range records {
 		id := ""
 		if r, ok := libdnsRecord.(Record); ok {
 			id = r.ID
 		}
 		if id == "" {
-			continue
+			rr := libdnsRecord.RR()
+			recs, err := listExisting()
+			if err != nil {
+				return deletedRecords, err
+			}
+			for _, e := range recs {
+				if e.Type == rr.Type && e.Name == rr.Name && e.Value == rr.Data {
+					id = e.ID
+					break
+				}
+			}
+			if id == "" {
+				continue // no matching record found; nothing to delete
+			}
 		}
 		_, err := client.Records.Delete(domainID, id)
 		if err != nil {
