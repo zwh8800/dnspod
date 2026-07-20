@@ -120,7 +120,10 @@ func (p *Provider) AppendRecords(ctx context.Context, zone string, records []lib
 		if err != nil {
 			return addedRecords, err
 		}
-		addedRecords = append(addedRecords, p.toLibdnsRecord(created))
+		// DNSPod's Record.Create response only echoes id/name/status and omits
+		// the record type and value, so return the record we were asked to add
+		// (with the new ID attached) instead of the sparse API response.
+		addedRecords = append(addedRecords, Record{ID: created.ID, base: libdnsRecord.RR()})
 	}
 
 	return addedRecords, nil
