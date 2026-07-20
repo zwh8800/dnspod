@@ -151,13 +151,15 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 			if err != nil {
 				return setRecords, err
 			}
-			setRecords = append(setRecords, p.toLibdnsRecord(created))
+			// As in AppendRecords: the API response omits type/value, so
+			// return the requested record with the new ID attached.
+			setRecords = append(setRecords, Record{ID: created.ID, base: libdnsRecord.RR()})
 			continue
 		}
 
 		// Set ID in the attributes for Update as DNSPod API often requires it in the body
 		dnspodRec.ID = id
-		updated, _, err := client.Records.Update(domainID, id, dnspodRec)
+		_, _, err = client.Records.Update(domainID, id, dnspodRec)
 		if err != nil {
 			// Fallback: Delete and Re-create if Update fails (sometimes DNSPod API is picky about record IDs)
 			_, _ = client.Records.Delete(domainID, id)
@@ -165,10 +167,10 @@ func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns
 			if err != nil {
 				return setRecords, fmt.Errorf("update failed (%v) and fallback create also failed: %v", id, err)
 			}
-			setRecords = append(setRecords, p.toLibdnsRecord(created))
+			setRecords = append(setRecords, Record{ID: created.ID, base: libdnsRecord.RR()})
 			continue
 		}
-		setRecords = append(setRecords, p.toLibdnsRecord(updated))
+		setRecords = append(setRecords, Record{ID: id, base: libdnsRecord.RR()})
 	}
 
 	return setRecords, nil
